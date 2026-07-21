@@ -1,0 +1,68 @@
+# 域名验证副本：从正式仓库 Lumi-Phone 拉代码构建，挂 www.lumiphone.cn
+# 正式站 https://lyx815934990-oss.github.io/Lumi-Phone/ 不受影响、不跳转
+name: Deploy GitHub Pages (domain verify)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-cn
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: lyx815934990-oss/Lumi-Phone
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Use root base for custom domain
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const p = 'vite.config.ts';
+          let s = fs.readFileSync(p, 'utf8');
+          const before = (s.match(/return '\/Lumi-Phone\/'/g) || []).length;
+          s = s.replaceAll("return '/Lumi-Phone/'", "return '/'");
+          const after = (s.match(/return '\/Lumi-Phone\/'/g) || []).length;
+          if (before < 1 || after !== 0) {
+            throw new Error('failed to patch vite base for custom domain');
+          }
+          fs.writeFileSync(p, s);
+          fs.mkdirSync('public', { recursive: true });
+          fs.writeFileSync('public/CNAME', 'www.lumiphone.cn\n');
+          NODE
+      - run: npm run build
+        env:
+          CI: true
+          COLUMNS: '9999'
+          VITE_WEB_PUSH_API_BASE: https://lumi-push.lyx815934990.workers.dev
+          VITE_USER_SYSTEM_API_BASE: https://user-system-api.lyx815934990.workers.dev
+          VITE_DISCORD_CLIENT_ID: ${{ secrets.VITE_DISCORD_CLIENT_ID }}
+          VITE_HF_REMOTE_HOST: ${{ vars.VITE_HF_REMOTE_HOST || 'https://hf-mirror.com/' }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
