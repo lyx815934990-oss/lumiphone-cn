@@ -1,5 +1,6 @@
-# 域名验证副本：从正式仓库 Lumi-Phone 拉代码构建，挂 www.lumiphone.cn
-# 正式站 https://lyx815934990-oss.github.io/Lumi-Phone/ 不受影响、不跳转
+# 域名站：从正式仓库 Lumi-Phone 拉代码构建，挂 www.lumiphone.cn
+# 主仓部署成功后会自动 workflow_dispatch 本流程；也可在 Actions 里手动 Run
+# 主仓改私密后必须配置 secrets.GH_PAT（可读 Lumi-Phone）
 name: Deploy GitHub Pages (domain verify)
 
 on:
@@ -24,31 +25,23 @@ jobs:
         with:
           repository: lyx815934990-oss/Lumi-Phone
           ref: main
+          # 未配置 GH_PAT 时用默认 token（仅主仓仍 Public 可用）；Private 后必须配 GH_PAT
+          token: ${{ secrets.GH_PAT || github.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm install --no-audit --no-fund
-      - name: Use root base for custom domain
+      - name: Write CNAME for www.lumiphone.cn
         run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const p = 'vite.config.ts';
-          let s = fs.readFileSync(p, 'utf8');
-          const before = (s.match(/return '\/Lumi-Phone\/'/g) || []).length;
-          s = s.replaceAll("return '/Lumi-Phone/'", "return '/'");
-          const after = (s.match(/return '\/Lumi-Phone\/'/g) || []).length;
-          if (before < 1 || after !== 0) {
-            throw new Error('failed to patch vite base for custom domain');
-          }
-          fs.writeFileSync(p, s);
-          fs.mkdirSync('public', { recursive: true });
-          fs.writeFileSync('public/CNAME', 'www.lumiphone.cn\n');
-          NODE
+          mkdir -p public
+          printf '%s\n' 'www.lumiphone.cn' > public/CNAME
       - run: npm run build
         env:
           CI: true
           COLUMNS: '9999'
+          # 自定义域名根路径（勿用 /Lumi-Phone/）
+          VITE_BASE: /
           VITE_WEB_PUSH_API_BASE: https://lumi-push.lyx815934990.workers.dev
           VITE_USER_SYSTEM_API_BASE: https://user-system-api.lyx815934990.workers.dev
           VITE_DISCORD_CLIENT_ID: ${{ secrets.VITE_DISCORD_CLIENT_ID }}
